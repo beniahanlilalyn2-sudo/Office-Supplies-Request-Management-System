@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="utf-8"?>
+<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_LibraryBorrowing" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:message id="Message_BookRequest" name="Book Request" />
+  <bpmn:message id="Message_LibraryResponse" name="Library Response (responseType and response data)" />
+  <bpmn:message id="Message_CorrectedDetails" name="Corrected Details" />
+  <bpmn:message id="Message_BookHandover" name="Book Handover" />
+  <bpmn:message id="Message_BookReturn" name="Book Return" />
+
+  <bpmn:process id="Process_Student" name="Student" isExecutable="false">
+    <bpmn:startEvent id="Student_Start" name="Start">
+      <bpmn:outgoing>Student_Flow_Start_Request</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sendTask id="Student_SubmitRequest" name="Submit Book Request" messageRef="Message_BookRequest">
+      <bpmn:incoming>Student_Flow_Start_Request</bpmn:incoming><bpmn:outgoing>Student_Flow_Request_Response</bpmn:outgoing>
+    </bpmn:sendTask>
+    <bpmn:receiveTask id="Student_ReceiveResponse" name="Receive Library Response" messageRef="Message_LibraryResponse">
+      <bpmn:documentation>This receive task receives the library response payload and sets responseType before the following data-based XOR gateway evaluates it. The response may be correction, unavailable, or approved.</bpmn:documentation>
+      <bpmn:incoming>Student_Flow_Request_Response</bpmn:incoming><bpmn:incoming>Student_Flow_Correction_Reroute</bpmn:incoming>
+      <bpmn:outgoing>Student_Flow_Response_Gateway</bpmn:outgoing>
+    </bpmn:receiveTask>
+    <bpmn:exclusiveGateway id="Student_Gateway_ResponseType" name="Response Type?" gatewayDirection="Diverging">
+      <bpmn:incoming>Student_Flow_Response_Gateway</bpmn:incoming>
+      <bpmn:outgoing>Student_Flow_Response_Correction</bpmn:outgoing><bpmn:outgoing>Student_Flow_Response_Unavailable</bpmn:outgoing><bpmn:outgoing>Student_Flow_Response_Approved</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sendTask id="Student_CorrectResubmit" name="Correct and Resubmit Details" messageRef="Message_CorrectedDetails">
+      <bpmn:incoming>Student_Flow_Response_Correction</bpmn:incoming><bpmn:outgoing>Student_Flow_Correction_Reroute</bpmn:outgoing>
+    </bpmn:sendTask>
+    <bpmn:endEvent id="Student_EndUnavailable" name="Unavailable Request Ended">
+      <bpmn:incoming>Student_Flow_Response_Unavailable</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:receiveTask id="Student_ReceiveBook" name="Receive Approved Book" messageRef="Message_BookHandover">
+      <bpmn:incoming>Student_Flow_Response_Approved</bpmn:incoming><bpmn:outgoing>Student_Flow_Receive_Use</bpmn:outgoing>
+    </bpmn:receiveTask>
+    <bpmn:task id="Student_UseBook" name="Use Book">
+      <bpmn:incoming>Student_Flow_Receive_Use</bpmn:incoming><bpmn:outgoing>Student_Flow_Use_Return</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:sendTask id="Student_ReturnBook" name="Return Book" messageRef="Message_BookReturn">
+      <bpmn:incoming>Student_Flow_Use_Return</bpmn:incoming><bpmn:outgoing>Student_Flow_Return_End</bpmn:outgoing>
+    </bpmn:sendTask>
+    <bpmn:endEvent id="Student_EndReturned" name="Book Returned">
+      <bpmn:incoming>Student_Flow_Return_End</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Student_Flow_Start_Request" sourceRef="Student_Start" targetRef="Student_SubmitRequest" />
+    <bpmn:sequenceFlow id="Student_Flow_Request_Response" sourceRef="Student_SubmitRequest" targetRef="Student_ReceiveResponse" />
+    <bpmn:sequenceFlow id="Student_Flow_Response_Gateway" sourceRef="Student_ReceiveResponse" targetRef="Student_Gateway_ResponseType" />
+    <bpmn:sequenceFlow id="Student_Flow_Response_Correction" name="correction" sourceRef="Student_Gateway_ResponseType" targetRef="Student_CorrectResubmit"><bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${responseType == 'correction'}</bpmn:conditionExpression></bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Student_Flow_Response_Unavailable" name="unavailable" sourceRef="Student_Gateway_ResponseType" targetRef="Student_EndUnavailable"><bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${responseType == 'unavailable'}</bpmn:conditionExpression></bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Student_Flow_Response_Approved" name="approved" sourceRef="Student_Gateway_ResponseType" targetRef="Student_ReceiveBook"><bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${responseType == 'approved'}</bpmn:conditionExpression></bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Student_Flow_Correction_Reroute" sourceRef="Student_CorrectResubmit" targetRef="Student_ReceiveResponse" />
+    <bpmn:sequenceFlow id="Student_Flow_Receive_Use" sourceRef="Student_ReceiveBook" targetRef="Student_UseBook" />
+    <bpmn:sequenceFlow id="Student_Flow_Use_Return" sourceRef="Student_UseBook" targetRef="Student_ReturnBook" />
+    <bpmn:sequenceFlow id="Student_Flow_Return_End" sourceRef="Student_ReturnBook" targetRef="Student_EndReturned" />
+  </bpmn:process>
+
+  <bpmn:process id="Process_Library" name="Library" isExecutable="false">
+    <bpmn:laneSet id="Library_LaneSet">
+      <bpmn:lane id="Library_LibrarianLane" name="Librarian">
+        <bpmn:flowNodeRef>Library_Start</bpmn:flowNodeRef><bpmn:flowNodeRef>Library_ReceiveRequest</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Library_Gateway_Availability</bpmn:flowNodeRef><bpmn:flowNodeRef>Library_SendUnavailable</bpmn:flowNodeRef><bpmn:flowNodeRef>Library_EndUnavailable</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Library_Gateway_DetailsValid</bpmn:flowNodeRef><bpmn:flowNodeRef>Library_SubProcess_CorrectionCycle</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Library_RecordLoan</bpmn:flowNodeRef><bpmn:flowNodeRef>Library_SendApproval</bpmn:flowNodeRef><bpmn:flowNodeRef>Library_HandOverBook</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Library_ReceiveReturnedBook</bpmn:flowNodeRef><bpmn:flowNodeRef>Library_CheckInBook</bpmn:flowNodeRef><bpmn:flowNodeRef>Library_EndComplete</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:startEvent id="Library_Start" name="Start"><bpmn:outgoing>Library_Flow_Start_Request</bpmn:outgoing></bpmn:startEvent>
+    <bpmn:receiveTask id="Library_ReceiveRequest" name="Receive Book Request" messageRef="Message_BookRequest"><bpmn:incoming>Library_Flow_Start_Request</bpmn:incoming><bpmn:outgoing>Library_Flow_Request_Availability</bpmn:outgoing></bpmn:receiveTask>
+    <bpmn:exclusiveGateway id="Library_Gateway_Availability" name="Book Available?" gatewayDirection="Diverging">
+      <bpmn:incoming>Library_Flow_Request_Availability</bpmn:incoming><bpmn:outgoing>Library_Flow_Available_No</bpmn:outgoing><bpmn:outgoing>Library_Flow_Available_Yes</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sendTask id="Library_SendUnavailable" name="Send Unavailable Notice" messageRef="Message_LibraryResponse"><bpmn:incoming>Library_Flow_Available_No</bpmn:incoming><bpmn:outgoing>Library_Flow_Unavailable_End</bpmn:outgoing></bpmn:sendTask>
+    <bpmn:endEvent id="Library_EndUnavailable" name="Unavailable Request Closed"><bpmn:incoming>Library_Flow_Unavailable_End</bpmn:incoming></bpmn:endEvent>
+    <bpmn:exclusiveGateway id="Library_Gateway_DetailsValid" name="Details Valid?" gatewayDirection="Diverging">
+      <bpmn:incoming>Library_Flow_Available_Yes</bpmn:incoming><bpmn:incoming>Library_Flow_Correction_Recheck</bpmn:incoming>
+      <bpmn:outgoing>Library_Flow_Details_No</bpmn:outgoing><bpmn:outgoing>Library_Flow_Details_Yes</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:subProcess id="Library_SubProcess_CorrectionCycle" name="Request and Review Corrected Details">
+      <bpmn:documentation>Each iteration requests corrected details, receives them, and reviews them. The subprocess repeats while detailsNeedCorrection remains true, then returns to the detail-validation gateway for the approved or further-correction decision.</bpmn:documentation>
+      <bpmn:incoming>Library_Flow_Details_No</bpmn:incoming><bpmn:outgoing>Library_Flow_Correction_Recheck</bpmn:outgoing>
+      <bpmn:startEvent id="Library_Correction_Start" name="Start"><bpmn:outgoing>Library_Correction_Flow_Start_Send</bpmn:outgoing></bpmn:startEvent>
+      <bpmn:sendTask id="Library_SendCorrection" name="Request Corrections" messageRef="Message_LibraryResponse"><bpmn:incoming>Library_Correction_Flow_Start_Send</bpmn:incoming><bpmn:outgoing>Library_Correction_Flow_Send_Receive</bpmn:outgoing></bpmn:sendTask>
+      <bpmn:receiveTask id="Library_ReceiveCorrectedDetails" name="Receive Corrected Details" messageRef="Message_CorrectedDetails"><bpmn:incoming>Library_Correction_Flow_Send_Receive</bpmn:incoming><bpmn:outgoing>Library_Correction_Flow_Receive_Review</bpmn:outgoing></bpmn:receiveTask>
+      <bpmn:task id="Library_ReviewCorrectedDetails" name="Review Corrected Details"><bpmn:incoming>Library_Correction_Flow_Receive_Review</bpmn:incoming><bpmn:outgoing>Library_Correction_Flow_Review_End</bpmn:outgoing></bpmn:task>
+      <bpmn:endEvent id="Library_Correction_End" name="Cycle Complete"><bpmn:incoming>Library_Correction_Flow_Review_End</bpmn:incoming></bpmn:endEvent>
+      <bpmn:sequenceFlow id="Library_Correction_Flow_Start_Send" sourceRef="Library_Correction_Start" targetRef="Library_SendCorrection" /><bpmn:sequenceFlow id="Library_Correction_Flow_Send_Receive" sourceRef="Library_SendCorrection" targetRef="Library_ReceiveCorrectedDetails" /><bpmn:sequenceFlow id="Library_Correction_Flow_Receive_Review" sourceRef="Library_ReceiveCorrectedDetails" targetRef="Library_ReviewCorrectedDetails" /><bpmn:sequenceFlow id="Library_Correction_Flow_Review_End" sourceRef="Library_ReviewCorrectedDetails" targetRef="Library_Correction_End" /><bpmn:standardLoopCharacteristics testBefore="false"><bpmn:loopCondition xsi:type="bpmn:tFormalExpression">${detailsNeedCorrection == true}</bpmn:loopCondition></bpmn:standardLoopCharacteristics>
+    </bpmn:subProcess>
+    <bpmn:task id="Library_RecordLoan" name="Record Loan and Due Date"><bpmn:incoming>Library_Flow_Details_Yes</bpmn:incoming><bpmn:outgoing>Library_Flow_Record_Approval</bpmn:outgoing></bpmn:task>
+    <bpmn:sendTask id="Library_SendApproval" name="Send Approval" messageRef="Message_LibraryResponse"><bpmn:incoming>Library_Flow_Record_Approval</bpmn:incoming><bpmn:outgoing>Library_Flow_Approval_Handover</bpmn:outgoing></bpmn:sendTask>
+    <bpmn:sendTask id="Library_HandOverBook" name="Hand Over Book" messageRef="Message_BookHandover"><bpmn:incoming>Library_Flow_Approval_Handover</bpmn:incoming><bpmn:outgoing>Library_Flow_Handover_Return</bpmn:outgoing></bpmn:sendTask>
+    <bpmn:receiveTask id="Library_ReceiveReturnedBook" name="Receive Returned Book" messageRef="Message_BookReturn"><bpmn:incoming>Library_Flow_Handover_Return</bpmn:incoming><bpmn:outgoing>Library_Flow_Return_CheckIn</bpmn:outgoing></bpmn:receiveTask>
+    <bpmn:task id="Library_CheckInBook" name="Check In Returned Book"><bpmn:incoming>Library_Flow_Return_CheckIn</bpmn:incoming><bpmn:outgoing>Library_Flow_CheckIn_End</bpmn:outgoing></bpmn:task>
+    <bpmn:endEvent id="Library_EndComplete" name="Loan Returned and Checked In"><bpmn:incoming>Library_Flow_CheckIn_End</bpmn:incoming></bpmn:endEvent>
+    <bpmn:sequenceFlow id="Library_Flow_Start_Request" sourceRef="Library_Start" targetRef="Library_ReceiveRequest" />
+    <bpmn:sequenceFlow id="Library_Flow_Request_Availability" sourceRef="Library_ReceiveRequest" targetRef="Library_Gateway_Availability" />
+    <bpmn:sequenceFlow id="Library_Flow_Available_No" name="No" sourceRef="Library_Gateway_Availability" targetRef="Library_SendUnavailable"><bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${bookAvailable == false}</bpmn:conditionExpression></bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Library_Flow_Unavailable_End" sourceRef="Library_SendUnavailable" targetRef="Library_EndUnavailable" />
+    <bpmn:sequenceFlow id="Library_Flow_Available_Yes" name="Yes" sourceRef="Library_Gateway_Availability" targetRef="Library_Gateway_DetailsValid"><bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${bookAvailable == true}</bpmn:conditionExpression></bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Library_Flow_Details_No" name="No" sourceRef="Library_Gateway_DetailsValid" targetRef="Library_SubProcess_CorrectionCycle"><bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${detailsValid == false}</bpmn:conditionExpression></bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Library_Flow_Correction_Recheck" sourceRef="Library_SubProcess_CorrectionCycle" targetRef="Library_Gateway_DetailsValid" />
+    <bpmn:sequenceFlow id="Library_Flow_Details_Yes" name="Yes" sourceRef="Library_Gateway_DetailsValid" targetRef="Library_RecordLoan"><bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${detailsValid == true}</bpmn:conditionExpression></bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Library_Flow_Record_Approval" sourceRef="Library_RecordLoan" targetRef="Library_SendApproval" />
+    <bpmn:sequenceFlow id="Library_Flow_Approval_Handover" sourceRef="Library_SendApproval" targetRef="Library_HandOverBook" />
+    <bpmn:sequenceFlow id="Library_Flow_Handover_Return" sourceRef="Library_HandOverBook" targetRef="Library_ReceiveReturnedBook" />
+    <bpmn:sequenceFlow id="Library_Flow_Return_CheckIn" sourceRef="Library_ReceiveReturnedBook" targetRef="Library_CheckInBook" />
+    <bpmn:sequenceFlow id="Library_Flow_CheckIn_End" sourceRef="Library_CheckInBook" targetRef="Library_EndComplete" />
+    
+    
+    
+    
+  </bpmn:process>
+
+  <bpmn:collaboration id="Collaboration_LibraryBorrowing" name="Library Borrowing">
+    <bpmn:participant id="Participant_Student" name="Student" processRef="Process_Student" />
+    <bpmn:participant id="Participant_Library" name="Library" processRef="Process_Library" />
+    <bpmn:messageFlow id="MessageFlow_BookRequest" name="Book Request" sourceRef="Student_SubmitRequest" targetRef="Library_ReceiveRequest" />
+    <bpmn:messageFlow id="MessageFlow_CorrectionRequest" name="Correction Request" sourceRef="Library_SendCorrection" targetRef="Student_ReceiveResponse" />
+    <bpmn:messageFlow id="MessageFlow_CorrectedDetails" name="Corrected Details" sourceRef="Student_CorrectResubmit" targetRef="Library_ReceiveCorrectedDetails" />
+    <bpmn:messageFlow id="MessageFlow_UnavailableNotice" name="Unavailable Notice" sourceRef="Library_SendUnavailable" targetRef="Student_ReceiveResponse" />
+    <bpmn:messageFlow id="MessageFlow_Approval" name="Approval" sourceRef="Library_SendApproval" targetRef="Student_ReceiveResponse" />
+    <bpmn:messageFlow id="MessageFlow_BookHandover" name="Book Handover" sourceRef="Library_HandOverBook" targetRef="Student_ReceiveBook" />
+    <bpmn:messageFlow id="MessageFlow_BookReturn" name="Book Return" sourceRef="Student_ReturnBook" targetRef="Library_ReceiveReturnedBook" />
+  </bpmn:collaboration>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_LibraryBorrowing">
+    <bpmndi:BPMNPlane id="BPMNPlane_LibraryBorrowing" bpmnElement="Collaboration_LibraryBorrowing">
+      <bpmndi:BPMNShape id="Shape_Participant_Student" bpmnElement="Participant_Student" isHorizontal="true"><dc:Bounds x="40" y="70" width="1760" height="390" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Participant_Library" bpmnElement="Participant_Library" isHorizontal="true"><dc:Bounds x="40" y="670" width="2000" height="500" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Lane_Librarian" bpmnElement="Library_LibrarianLane" isHorizontal="true"><dc:Bounds x="80" y="700" width="1960" height="440" /></bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Shape_Student_Start" bpmnElement="Student_Start"><dc:Bounds x="90" y="245" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Student_SubmitRequest" bpmnElement="Student_SubmitRequest"><dc:Bounds x="165" y="223" width="135" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Student_ReceiveResponse" bpmnElement="Student_ReceiveResponse"><dc:Bounds x="345" y="223" width="195" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Student_Gateway_ResponseType" bpmnElement="Student_Gateway_ResponseType" isMarkerVisible="true"><dc:Bounds x="590" y="238" width="50" height="50" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Student_CorrectResubmit" bpmnElement="Student_CorrectResubmit"><dc:Bounds x="740" y="260" width="160" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Student_EndUnavailable" bpmnElement="Student_EndUnavailable"><dc:Bounds x="740" y="365" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Student_ReceiveBook" bpmnElement="Student_ReceiveBook"><dc:Bounds x="740" y="115" width="130" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Student_UseBook" bpmnElement="Student_UseBook"><dc:Bounds x="920" y="115" width="130" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Student_ReturnBook" bpmnElement="Student_ReturnBook"><dc:Bounds x="1100" y="115" width="130" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Student_EndReturned" bpmnElement="Student_EndReturned"><dc:Bounds x="1290" y="137" width="36" height="36" /></bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Shape_Library_Start" bpmnElement="Library_Start"><dc:Bounds x="95" y="880" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Library_ReceiveRequest" bpmnElement="Library_ReceiveRequest"><dc:Bounds x="160" y="858" width="140" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Library_Gateway_Availability" bpmnElement="Library_Gateway_Availability" isMarkerVisible="true"><dc:Bounds x="340" y="873" width="50" height="50" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Library_SendUnavailable" bpmnElement="Library_SendUnavailable"><dc:Bounds x="500" y="710" width="150" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Library_EndUnavailable" bpmnElement="Library_EndUnavailable"><dc:Bounds x="700" y="732" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Library_Gateway_DetailsValid" bpmnElement="Library_Gateway_DetailsValid" isMarkerVisible="true"><dc:Bounds x="475" y="873" width="50" height="50" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Library_SubProcess_CorrectionCycle" bpmnElement="Library_SubProcess_CorrectionCycle" isExpanded="true"><dc:Bounds x="590" y="810" width="550" height="210" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Library_Correction_Start" bpmnElement="Library_Correction_Start"><dc:Bounds x="610" y="897" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Library_SendCorrection" bpmnElement="Library_SendCorrection"><dc:Bounds x="655" y="875" width="120" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Library_ReceiveCorrectedDetails" bpmnElement="Library_ReceiveCorrectedDetails"><dc:Bounds x="790" y="875" width="120" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Library_ReviewCorrectedDetails" bpmnElement="Library_ReviewCorrectedDetails"><dc:Bounds x="925" y="875" width="120" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Library_Correction_End" bpmnElement="Library_Correction_End"><dc:Bounds x="1075" y="897" width="36" height="36" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Library_RecordLoan" bpmnElement="Library_RecordLoan"><dc:Bounds x="1190" y="858" width="135" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Library_SendApproval" bpmnElement="Library_SendApproval"><dc:Bounds x="1345" y="858" width="120" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Library_HandOverBook" bpmnElement="Library_HandOverBook"><dc:Bounds x="1485" y="858" width="130" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Library_ReceiveReturnedBook" bpmnElement="Library_ReceiveReturnedBook"><dc:Bounds x="1635" y="858" width="145" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Library_CheckInBook" bpmnElement="Library_CheckInBook"><dc:Bounds x="1800" y="858" width="120" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Library_EndComplete" bpmnElement="Library_EndComplete"><dc:Bounds x="1950" y="880" width="36" height="36" /></bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="Edge_Student_Flow_Start_Request" bpmnElement="Student_Flow_Start_Request"><di:waypoint x="126" y="263" /><di:waypoint x="165" y="263" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Student_Flow_Request_Response" bpmnElement="Student_Flow_Request_Response"><di:waypoint x="300" y="263" /><di:waypoint x="345" y="263" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Student_Flow_Response_Gateway" bpmnElement="Student_Flow_Response_Gateway"><di:waypoint x="540" y="263" /><di:waypoint x="590" y="263" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Student_Flow_Response_Correction" bpmnElement="Student_Flow_Response_Correction"><di:waypoint x="640" y="263" /><di:waypoint x="690" y="263" /><di:waypoint x="690" y="300" /><di:waypoint x="740" y="300" /><bpmndi:BPMNLabel><dc:Bounds x="650" y="275" width="145" height="24" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Student_Flow_Response_Unavailable" bpmnElement="Student_Flow_Response_Unavailable"><di:waypoint x="615" y="288" /><di:waypoint x="615" y="383" /><di:waypoint x="740" y="383" /><bpmndi:BPMNLabel><dc:Bounds x="625" y="330" width="160" height="24" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Student_Flow_Response_Approved" bpmnElement="Student_Flow_Response_Approved"><di:waypoint x="640" y="263" /><di:waypoint x="680" y="263" /><di:waypoint x="680" y="155" /><di:waypoint x="740" y="155" /><bpmndi:BPMNLabel><dc:Bounds x="642" y="170" width="145" height="24" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Student_Flow_Correction_Reroute" bpmnElement="Student_Flow_Correction_Reroute"><di:waypoint x="900" y="300" /><di:waypoint x="930" y="300" /><di:waypoint x="930" y="430" /><di:waypoint x="442" y="430" /><di:waypoint x="442" y="303" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Student_Flow_Receive_Use" bpmnElement="Student_Flow_Receive_Use"><di:waypoint x="870" y="155" /><di:waypoint x="920" y="155" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Student_Flow_Use_Return" bpmnElement="Student_Flow_Use_Return"><di:waypoint x="1050" y="155" /><di:waypoint x="1100" y="155" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Student_Flow_Return_End" bpmnElement="Student_Flow_Return_End"><di:waypoint x="1230" y="155" /><di:waypoint x="1290" y="155" /></bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Edge_Library_Flow_Start_Request" bpmnElement="Library_Flow_Start_Request"><di:waypoint x="131" y="898" /><di:waypoint x="160" y="898" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Library_Flow_Request_Availability" bpmnElement="Library_Flow_Request_Availability"><di:waypoint x="300" y="898" /><di:waypoint x="340" y="898" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Library_Flow_Available_No" bpmnElement="Library_Flow_Available_No"><di:waypoint x="365" y="873" /><di:waypoint x="365" y="750" /><di:waypoint x="500" y="750" /><bpmndi:BPMNLabel><dc:Bounds x="375" y="762" width="135" height="24" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Library_Flow_Unavailable_End" bpmnElement="Library_Flow_Unavailable_End"><di:waypoint x="650" y="750" /><di:waypoint x="700" y="750" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Library_Flow_Available_Yes" bpmnElement="Library_Flow_Available_Yes"><di:waypoint x="390" y="898" /><di:waypoint x="475" y="898" /><bpmndi:BPMNLabel><dc:Bounds x="395" y="865" width="135" height="24" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Library_Flow_Details_No" bpmnElement="Library_Flow_Details_No"><di:waypoint x="500" y="923" /><di:waypoint x="500" y="970" /><di:waypoint x="590" y="970" /><bpmndi:BPMNLabel><dc:Bounds x="525" y="935" width="160" height="24" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Library_Flow_Correction_Recheck" bpmnElement="Library_Flow_Correction_Recheck"><di:waypoint x="1140" y="915" /><di:waypoint x="1160" y="915" /><di:waypoint x="1160" y="1040" /><di:waypoint x="500" y="1040" /><di:waypoint x="500" y="923" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Library_Flow_Details_Yes" bpmnElement="Library_Flow_Details_Yes"><di:waypoint x="525" y="898" /><di:waypoint x="550" y="898" /><di:waypoint x="550" y="1060" /><di:waypoint x="1257" y="1060" /><di:waypoint x="1257" y="938" /><bpmndi:BPMNLabel><dc:Bounds x="555" y="1045" width="145" height="24" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Library_Flow_Record_Approval" bpmnElement="Library_Flow_Record_Approval"><di:waypoint x="1325" y="898" /><di:waypoint x="1345" y="898" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Library_Flow_Approval_Handover" bpmnElement="Library_Flow_Approval_Handover"><di:waypoint x="1465" y="898" /><di:waypoint x="1485" y="898" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Library_Flow_Handover_Return" bpmnElement="Library_Flow_Handover_Return"><di:waypoint x="1615" y="898" /><di:waypoint x="1635" y="898" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Library_Flow_Return_CheckIn" bpmnElement="Library_Flow_Return_CheckIn"><di:waypoint x="1780" y="898" /><di:waypoint x="1800" y="898" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Library_Flow_CheckIn_End" bpmnElement="Library_Flow_CheckIn_End"><di:waypoint x="1920" y="898" /><di:waypoint x="1950" y="898" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Library_Correction_Flow_Start_Send" bpmnElement="Library_Correction_Flow_Start_Send"><di:waypoint x="646" y="915" /><di:waypoint x="655" y="915" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Library_Correction_Flow_Send_Receive" bpmnElement="Library_Correction_Flow_Send_Receive"><di:waypoint x="775" y="915" /><di:waypoint x="790" y="915" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Library_Correction_Flow_Receive_Review" bpmnElement="Library_Correction_Flow_Receive_Review"><di:waypoint x="910" y="915" /><di:waypoint x="925" y="915" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Library_Correction_Flow_Review_End" bpmnElement="Library_Correction_Flow_Review_End"><di:waypoint x="1045" y="915" /><di:waypoint x="1075" y="915" /></bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Edge_MessageFlow_BookRequest" bpmnElement="MessageFlow_BookRequest"><di:waypoint x="232" y="303" /><di:waypoint x="232" y="490" /><di:waypoint x="230" y="490" /><di:waypoint x="230" y="858" /><bpmndi:BPMNLabel><dc:Bounds x="90" y="465" width="135" height="20" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_MessageFlow_CorrectionRequest" bpmnElement="MessageFlow_CorrectionRequest"><di:waypoint x="715" y="875" /><di:waypoint x="715" y="640" /><di:waypoint x="450" y="640" /><di:waypoint x="450" y="223" /><bpmndi:BPMNLabel><dc:Bounds x="240" y="605" width="150" height="20" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_MessageFlow_CorrectedDetails" bpmnElement="MessageFlow_CorrectedDetails"><di:waypoint x="820" y="340" /><di:waypoint x="820" y="490" /><di:waypoint x="850" y="490" /><di:waypoint x="850" y="875" /><bpmndi:BPMNLabel><dc:Bounds x="400" y="465" width="145" height="20" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_MessageFlow_UnavailableNotice" bpmnElement="MessageFlow_UnavailableNotice"><di:waypoint x="575" y="710" /><di:waypoint x="575" y="590" /><di:waypoint x="500" y="590" /><di:waypoint x="500" y="303" /><bpmndi:BPMNLabel><dc:Bounds x="555" y="555" width="160" height="20" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_MessageFlow_Approval" bpmnElement="MessageFlow_Approval"><di:waypoint x="1405" y="858" /><di:waypoint x="1405" y="560" /><di:waypoint x="650" y="560" /><di:waypoint x="650" y="240" /><di:waypoint x="540" y="240" /><bpmndi:BPMNLabel><dc:Bounds x="710" y="485" width="100" height="20" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_MessageFlow_BookHandover" bpmnElement="MessageFlow_BookHandover"><di:waypoint x="1550" y="858" /><di:waypoint x="1550" y="540" /><di:waypoint x="805" y="540" /><di:waypoint x="805" y="195" /><bpmndi:BPMNLabel><dc:Bounds x="825" y="465" width="135" height="20" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_MessageFlow_BookReturn" bpmnElement="MessageFlow_BookReturn"><di:waypoint x="1165" y="195" /><di:waypoint x="1165" y="530" /><di:waypoint x="1707" y="530" /><di:waypoint x="1707" y="858" /><bpmndi:BPMNLabel><dc:Bounds x="975" y="500" width="120" height="20" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
